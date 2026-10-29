@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🎃 Halloween Game Night Scoreboard</title>
+  <style>
+    :root {
+      --orange:    #FF6B00;
+      --orange-lt: #FF9A3C;
+      --purple:    #7B2FBE;
+      --purple-dk: #3D0D6B;
+      --yellow:    #FFD700;
+      --bg:        #07070f;
+      --card:      #0f0926;
+      --text:      #f0f0f0;
+      --muted:     #666;
+      --green:     #22c55e;
+      --red:       #ef4444;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%; width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Georgia, 'Times New Roman', serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ── Animated background ── */
+    .moon {
+      position: fixed; top: -80px; right: -80px;
+      width: 260px; height: 260px;
+      background: radial-gradient(circle at 38% 38%, #fff9d6, #e6aa00 55%, #7a4800);
+      border-radius: 50%;
+      box-shadow: 0 0 100px rgba(255,200,0,.25);
+      opacity: .4; pointer-events: none; z-index: 0;
+    }
+
+    #particles {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 0; overflow: hidden;
+    }
+    .ptcl {
+      position: absolute;
+      animation: floatUp linear infinite; opacity: 0;
+    }
+    @keyframes floatUp {
+      0%   { transform: translateY(105vh) rotate(0deg);  opacity: 0; }
+      8%   { opacity: .3; }
+      92%  { opacity: .3; }
+      100% { transform: translateY(-8vh) rotate(360deg); opacity: 0; }
+    }
+
+    /* ── Main layout ── */
+    #app {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column;
+      height: 100vh; padding: 1.5vh 2vw 1vh;
+      gap: 1.2vh;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .header-title {
+      font-size: clamp(1.6rem, 3.5vw, 3rem);
+      color: var(--orange);
+      text-shadow: 0 0 30px rgba(255,107,0,.5);
+      letter-spacing: .05em;
+      white-space: nowrap;
+    }
+
+    /* Current game pill */
+    .game-pill {
+      display: flex; align-items: center; gap: .6rem;
+      background: var(--purple-dk);
+      border: 2px solid var(--purple);
+      border-radius: 999px;
+      padding: .45rem 1.1rem;
+      cursor: pointer;
+      transition: border-color .2s;
+      flex-shrink: 0;
+    }
+    .game-pill:hover { border-color: var(--orange); }
+    .game-pill-label { font-size: clamp(.75rem, 1.3vw, 1.1rem); color: var(--muted); }
+    .game-pill-name  { font-size: clamp(.9rem, 1.6vw, 1.35rem); color: var(--yellow); font-weight: bold; }
+    .game-pill-icon  { font-size: 1.1rem; }
+
+    /* Round badge */
+    .round-badge {
+      background: #111;
+      border: 2px solid #333;
+      border-radius: 999px;
+      padding: .4rem 1rem;
+      font-size: clamp(.8rem, 1.4vw, 1.1rem);
+      color: var(--muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color .2s;
+      flex-shrink: 0;
+    }
+    .round-badge span { color: var(--orange); font-weight: bold; }
+    .round-badge:hover { border-color: var(--orange); }
+
+    /* ── Score section (fills remaining space) ── */
+    .scores {
+      display: flex; gap: 2vw;
+      flex: 1; min-height: 0;
+    }
+
+    .team-card {
+      flex: 1;
+      display: flex; flex-direction: column;
+      background: var(--card);
+      border: 3px solid #222;
+      border-radius: 24px;
+      padding: 2vh 2vw;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      transition: border-color .4s, box-shadow .4s;
+      overflow: hidden;
+    }
+
+    .team-card.leader {
+      border-color: var(--orange);
+      box-shadow: 0 0 40px rgba(255,107,0,.2), inset 0 0 60px rgba(255,107,0,.04);
+    }
+
+    .team-card.leader::before {
+      content: '👑';
+      position: absolute; top: 1rem; left: 50%;
+      transform: translateX(-50%);
+      font-size: clamp(1.4rem, 2.5vw, 2rem);
+      animation: crownBob 1.8s ease-in-out infinite;
+    }
+    @keyframes crownBob {
+      0%,100% { transform: translateX(-50%) translateY(0); }
+      50%      { transform: translateX(-50%) translateY(-6px); }
+    }
+
+    /* Team name — editable on double-click */
+    .team-name {
+      font-size: clamp(1.8rem, 4vw, 3.8rem);
+      font-weight: bold;
+      text-align: center;
+      color: var(--text);
+      margin-top: 1.5rem;
+      cursor: pointer;
+      border-bottom: 2px dashed transparent;
+      transition: border-color .2s;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .team-name:hover { border-bottom-color: var(--muted); }
+    .team-name-input {
+      display: none;
+      font-size: clamp(1.4rem, 3vw, 2.8rem);
+      font-weight: bold;
+      text-align: center;
+      background: transparent;
+      border: none; border-bottom: 2px solid var(--orange);
+      color: var(--text);
+      width: 90%;
+      outline: none;
+      font-family: inherit;
+    }
+
+    /* Score number */
+    .score-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      flex: 1; justify-content: center;
+    }
+    .score-number {
+      font-size: clamp(5rem, 16vw, 14rem);
+      font-weight: bold;
+      line-height: 1;
+      color: var(--yellow);
+      text-shadow: 0 0 40px rgba(255,215,0,.35);
+      transition: transform .12s;
+    }
+    .score-number.bump { animation: bump .22s ease-out; }
+    @keyframes bump {
+      0%   { transform: scale(1); }
+      40%  { transform: scale(1.12); }
+      100% { transform: scale(1); }
+    }
+
+    /* Score controls */
+    .score-controls {
+      display: flex; gap: .7vw; flex-wrap: wrap; justify-content: center;
+    }
+    .sc-btn {
+      padding: .55em 1em;
+      border-radius: 10px;
+      border: 2px solid transparent;
+      font-size: clamp(.75rem, 1.4vw, 1.15rem);
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform .07s, opacity .15s;
+      font-family: inherit;
+    }
+    .sc-btn:active { transform: scale(.92); }
+
+    .btn-plus1  { background:#1a3a1a; color: var(--green);  border-color: #2a6a2a; }
+    .btn-plus3  { background:#2a2a00; color: var(--yellow); border-color: #666600; }
+    .btn-plus5  { background:#3a1a00; color: var(--orange); border-color: #884400; }
+    .btn-minus  { background:#2a0000; color: var(--red);    border-color: #660000; }
+
+    /* ── Bottom bar ── */
+    footer {
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .3rem 0;
+    }
+
+    .hint { font-size: clamp(.65rem, 1.1vw, .9rem); color: var(--muted); }
+
+    .btn-reset {
+      background: #111; color: #666;
+      border: 2px solid #333; border-radius: 8px;
+      padding: .4rem .9rem;
+      font-size: clamp(.7rem, 1.1vw, .9rem);
+      cursor: pointer; font-family: inherit;
+      transition: border-color .2s, color .2s;
+    }
+    .btn-reset:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Tie indicator ── */
+    .tie-banner {
+      display: none;
+      position: fixed; bottom: 6vh; left: 50%; transform: translateX(-50%);
+      background: var(--purple-dk);
+      border: 2px solid var(--purple);
+      border-radius: 999px;
+      padding: .5rem 2rem;
+      font-size: clamp(1rem, 1.8vw, 1.4rem);
+      color: var(--yellow);
+      z-index: 10;
+      animation: fadeIn .4s ease-out;
+    }
+    .tie-banner.show { display: block; }
+    @keyframes fadeIn { from { opacity:0; transform: translateX(-50%) translateY(10px); } to { opacity:1; transform: translateX(-50%) translateY(0); } }
+
+    /* ── Game selector modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.75);
+      z-index: 20;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: #0f0926;
+      border: 2px solid var(--purple);
+      border-radius: 18px;
+      padding: 2rem;
+      min-width: 320px; max-width: 90vw;
+    }
+    .modal h3 { color: var(--orange); margin-bottom: 1.2rem; font-size: 1.3rem; text-align: center; }
+
+    .game-option {
+      display: block; width: 100%;
+      background: #17103a; color: var(--text);
+      border: 2px solid #333; border-radius: 10px;
+      padding: .8rem 1.2rem;
+      font-size: 1.05rem; font-family: inherit;
+      cursor: pointer; text-align: left;
+      margin-bottom: .6rem;
+      transition: border-color .15s;
+    }
+    .game-option:hover { border-color: var(--orange); color: var(--yellow); }
+    .game-option.active { border-color: var(--orange); color: var(--yellow); }
+
+    .modal-close {
+      display: block; width: 100%;
+      background: #222; color: #888;
+      border: 2px solid #444; border-radius: 10px;
+      padding: .6rem; font-size: .95rem; font-family: inherit;
+      cursor: pointer; margin-top: .4rem;
+    }
+    .modal-close:hover { color: #ccc; }
+
+    /* Custom game input */
+    .custom-input {
+      width: 100%; background: #111;
+      border: 2px solid #444; border-radius: 8px;
+      color: var(--text); font-size: 1rem; font-family: inherit;
+      padding: .6rem .9rem; outline: none; margin-bottom: .6rem;
+      transition: border-color .2s;
+    }
+    .custom-input:focus { border-color: var(--orange); }
+
+    /* ── Fullscreen prompt on load ── */
+    #fs-prompt {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.88);
+      z-index: 30;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1.5rem;
+      text-align: center;
+    }
+    #fs-prompt h2 { font-size: clamp(2rem, 5vw, 3.5rem); color: var(--orange); }
+    #fs-prompt p  { color: var(--muted); font-size: clamp(.9rem, 1.6vw, 1.2rem); max-width: 500px; }
+    .btn-big {
+      background: var(--orange); color: #000;
+      border: none; border-radius: 12px;
+      padding: 1rem 2.5rem;
+      font-size: clamp(1.1rem, 2vw, 1.6rem);
+      font-weight: bold; cursor: pointer;
+      font-family: inherit;
+      transition: transform .08s;
+    }
+    .btn-big:active { transform: scale(.96); }
+    .btn-skip { background: none; color: var(--muted); border: none; cursor: pointer; font-size: .9rem; font-family: inherit; }
+  </style>
+</head>
+<body>
+
+<!-- Fullscreen prompt -->
+<div id="fs-prompt">
+  <div style="font-size:5rem">🎃</div>
+  <h2>Halloween Game Night</h2>
+  <p>For the best experience on a TV, click below to go fullscreen.</p>
+  <button class="btn-big" onclick="goFullscreen()">⛶ Enter Fullscreen</button>
+  <button class="btn-skip" onclick="dismissPrompt()">Skip — use windowed</button>
+</div>
+
+<!-- Background -->
+<div class="moon"></div>
+<div id="particles"></div>
+
+<!-- App -->
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <div class="header-title">🎃 Halloween Game Night</div>
+
+    <div class="game-pill" onclick="openGameModal()" title="Click to change game">
+      <span class="game-pill-label">Now Playing:</span>
+      <span class="game-pill-name" id="game-name">Word Card Game</span>
+      <span class="game-pill-icon">🎮</span>
+    </div>
+
+    <div class="round-badge" onclick="bumpRound()" title="Click to advance round">
+      Round <span id="round-num">1</span>
+    </div>
+  </header>
+
+  <!-- Scores -->
+  <div class="scores">
+
+    <!-- Team 1 -->
+    <div class="team-card" id="card-0">
+      <div class="team-name" id="name-0" ondblclick="editName(0)" title="Double-click to rename">
+        Ghostbusters
+      </div>
+      <input class="team-name-input" id="name-input-0" onblur="saveName(0)" onkeydown="nameKey(event,0)" maxlength="22"/>
+
+      <div class="score-wrap">
+        <div class="score-number" id="score-0">0</div>
+      </div>
+
+      <div class="score-controls">
+        <button class="sc-btn btn-plus1" onclick="addScore(0,1)">+1</button>
+        <button class="sc-btn btn-plus3" onclick="addScore(0,3)">+3</button>
+        <button class="sc-btn btn-plus5" onclick="addScore(0,5)">+5</button>
+        <button class="sc-btn btn-minus" onclick="addScore(0,-1)">−1</button>
+      </div>
+    </div>
+
+    <!-- Team 2 -->
+    <div class="team-card" id="card-1">
+      <div class="team-name" id="name-1" ondblclick="editName(1)" title="Double-click to rename">
+        Zombie Squad
+      </div>
+      <input class="team-name-input" id="name-input-1" onblur="saveName(1)" onkeydown="nameKey(event,1)" maxlength="22"/>
+
+      <div class="score-wrap">
+        <div class="score-number" id="score-1">0</div>
+      </div>
+
+      <div class="score-controls">
+        <button class="sc-btn btn-plus1" onclick="addScore(1,1)">+1</button>
+        <button class="sc-btn btn-plus3" onclick="addScore(1,3)">+3</button>
+        <button class="sc-btn btn-plus5" onclick="addScore(1,5)">+5</button>
+        <button class="sc-btn btn-minus" onclick="addScore(1,-1)">−1</button>
+      </div>
+    </div>
+
+  </div><!-- /scores -->
+
+  <!-- Footer -->
+  <footer>
+    <div class="hint">💡 Double-click a team name to rename &nbsp;·&nbsp; Click "Round 1" to advance &nbsp;·&nbsp; Click game name to switch games</div>
+    <button class="btn-reset" onclick="confirmReset()">🔄 Reset All Scores</button>
+  </footer>
+
+</div><!-- /app -->
+
+<!-- Tie banner -->
+<div class="tie-banner" id="tie-banner">🤝 It's a Tie!</div>
+
+<!-- Game selector modal -->
+<div class="modal-overlay" id="game-modal" onclick="closeGameModal(event)">
+  <div class="modal">
+    <h3>🎮 Select Current Game</h3>
+
+    <button class="game-option active" id="opt-0" onclick="selectGame('Word Card Game', 0)">🃏 Word Card Game</button>
+    <button class="game-option"        id="opt-1" onclick="selectGame('Word Scramble', 1)">🔤 Word Scramble</button>
+    <button class="game-option"        id="opt-2" onclick="selectGame('Halftime Break 🎃', 2)">⏸️ Halftime Break</button>
+    <button class="game-option"        id="opt-3" onclick="selectGame('Final Round', 3)">🏆 Final Round</button>
+
+    <input class="custom-input" id="custom-game-input" placeholder="Custom game name…" onkeydown="customGameKey(event)"/>
+
+    <button class="modal-close" onclick="closeGameModal()">✕ Close</button>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════
+   STATE
+══════════════════════════════ */
+var state = {
+  scores:    [0, 0],
+  names:     ["Ghostbusters", "Zombie Squad"],
+  round:     1,
+  game:      "Word Card Game",
+  gameOptIdx: 0
+};
+
+/* ══════════════════════════════
+   INIT
+══════════════════════════════ */
+(function init() {
+  try {
+    var saved = localStorage.getItem("hn_scoreboard");
+    if (saved) {
+      var s = JSON.parse(saved);
+      state = Object.assign(state, s);
+    }
+  } catch(e) {}
+  render();
+  spawnParticles();
+})();
+
+function save() {
+  try { localStorage.setItem("hn_scoreboard", JSON.stringify(state)); } catch(e) {}
+}
+
+function render() {
+  [0,1].forEach(function(i) {
+    document.getElementById("score-" + i).textContent = state.scores[i];
+    document.getElementById("name-" + i).textContent  = state.names[i];
+    document.getElementById("name-input-" + i).value  = state.names[i];
+  });
+  document.getElementById("round-num").textContent = state.round;
+  document.getElementById("game-name").textContent  = state.game;
+  updateLeader();
+}
+
+function updateLeader() {
+  var s = state.scores;
+  document.getElementById("card-0").classList.toggle("leader", s[0] > s[1]);
+  document.getElementById("card-1").classList.toggle("leader", s[1] > s[0]);
+
+  var tie = document.getElementById("tie-banner");
+  if (s[0] === s[1] && (s[0] > 0 || s[1] > 0)) {
+    tie.classList.add("show");
+    setTimeout(function(){ tie.classList.remove("show"); }, 2500);
+  }
+}
+
+/* ══════════════════════════════
+   SCORING
+══════════════════════════════ */
+function addScore(team, delta) {
+  state.scores[team] = Math.max(0, state.scores[team] + delta);
+  var el = document.getElementById("score-" + team);
+  el.textContent = state.scores[team];
+  el.classList.remove("bump");
+  void el.offsetWidth;
+  el.classList.add("bump");
+  updateLeader();
+  save();
+}
+
+/* ══════════════════════════════
+   ROUND
+══════════════════════════════ */
+function bumpRound() {
+  state.round++;
+  document.getElementById("round-num").textContent = state.round;
+  save();
+}
+
+/* ══════════════════════════════
+   TEAM NAME EDITING
+══════════════════════════════ */
+function editName(i) {
+  document.getElementById("name-" + i).style.display       = "none";
+  document.getElementById("name-input-" + i).style.display = "block";
+  document.getElementById("name-input-" + i).focus();
+  document.getElementById("name-input-" + i).select();
+}
+
+function saveName(i) {
+  var val = document.getElementById("name-input-" + i).value.trim() || ("Team " + (i+1));
+  state.names[i] = val;
+  document.getElementById("name-" + i).textContent         = val;
+  document.getElementById("name-" + i).style.display       = "";
+  document.getElementById("name-input-" + i).style.display = "none";
+  save();
+}
+
+function nameKey(e, i) {
+  if (e.key === "Enter" || e.key === "Escape") saveName(i);
+}
+
+/* ══════════════════════════════
+   GAME SELECTOR
+══════════════════════════════ */
+var GAMES = ["Word Card Game","Word Scramble","Halftime Break 🎃","Final Round"];
+
+function openGameModal()  { document.getElementById("game-modal").classList.add("open"); }
+function closeGameModal(e) {
+  if (!e || e.target === document.getElementById("game-modal")) {
+    document.getElementById("game-modal").classList.remove("open");
+  }
+}
+
+function selectGame(name, idx) {
+  state.game = name;
+  state.gameOptIdx = idx;
+  document.getElementById("game-name").textContent = name;
+  GAMES.forEach(function(_, i) {
+    document.getElementById("opt-" + i).classList.toggle("active", i === idx);
+  });
+  closeGameModal();
+  save();
+}
+
+function customGameKey(e) {
+  if (e.key === "Enter") {
+    var v = document.getElementById("custom-game-input").value.trim();
+    if (v) { state.game = v; state.gameOptIdx = -1; document.getElementById("game-name").textContent = v; closeGameModal(); save(); }
+  }
+}
+
+/* ══════════════════════════════
+   RESET
+══════════════════════════════ */
+function confirmReset() {
+  if (confirm("Reset both scores to 0? Team names and round will stay.")) {
+    state.scores = [0,0];
+    state.round  = 1;
+    render();
+    save();
+  }
+}
+
+/* ══════════════════════════════
+   FULLSCREEN
+══════════════════════════════ */
+function goFullscreen() {
+  var el = document.documentElement;
+  if (el.requestFullscreen)       el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  dismissPrompt();
+}
+function dismissPrompt() {
+  document.getElementById("fs-prompt").style.display = "none";
+}
+
+/* ══════════════════════════════
+   PARTICLES
+══════════════════════════════ */
+function spawnParticles() {
+  var emojis = ['🎃','👻','🕷️','🦇','🕸️','💀','🌕'];
+  var c = document.getElementById("particles");
+  for (var i = 0; i < 22; i++) {
+    var p = document.createElement("span");
+    p.className = "ptcl";
+    p.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    var dur   = 12 + Math.random() * 16;
+    var delay = Math.random() * -25;
+    var left  = Math.random() * 100;
+    var size  = 1.2 + Math.random() * 1.4;
+    p.style.cssText = "left:"+left+"%;font-size:"+size+"rem;animation-duration:"+dur+"s;animation-delay:"+delay+"s";
+    c.appendChild(p);
+  }
+}
+</script>
+</body>
+</html>
