@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Night Scoreboard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Canvas Confetti for winning/celebration -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- Google Fonts: Inter & Montserrat for high-readability scoreboard -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:ital,wght@0,800;0,900;1,900&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Montserrat', 'sans-serif'],
+          },
+          animation: {
+            'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'bounce-short': 'bounceShort 0.5s ease-in-out 1',
+            'glow': 'glow 2s infinite alternate',
+          },
+          keyframes: {
+            bounceShort: {
+              '0%, 100%': { transform: 'scale(1)' },
+              '50%': { transform: 'scale(1.15)' },
+            },
+            glow: {
+              '0%': { boxShadow: '0 0 15px rgba(236, 72, 153, 0.3)' },
+              '100%': { boxShadow: '0 0 30px rgba(168, 85, 247, 0.6)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbars and transition styles */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    .text-glow {
+      text-shadow: 0 0 20px currentColor;
+    }
+    .score-card-transition {
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans overflow-x-hidden selection:bg-pink-500 selection:text-white">
+
+  <!-- Top Navigation & View Switcher Bar -->
+  <header class="bg-slate-900/90 border-b border-slate-800 backdrop-blur sticky top-0 z-50 px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+    <div class="flex items-center space-x-3">
+      <div class="p-2 bg-gradient-to-tr from-purple-600 to-pink-500 rounded-xl shadow-lg shadow-pink-500/20">
+        <i data-lucide="trophy" class="w-6 h-6 text-white"></i>
+      </div>
+      <div>
+        <h1 class="font-display font-black text-xl tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-amber-300">
+          GAME NIGHT HQ
+        </h1>
+        <p class="text-xs text-slate-400 flex items-center gap-1.5" id="sync-status">
+          <span class="w-2 h-2 rounded-full bg-yellow-500 animate-ping"></span>
+          <span>Connecting real-time sync...</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- View Toggle Switcher -->
+    <div class="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+      <button id="btn-view-tv" onclick="switchView('tv')" class="px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all duration-200 text-slate-400 hover:text-white">
+        <i data-lucide="tv" class="w-4 h-4"></i>
+        <span>TV Display</span>
+      </button>
+      <button id="btn-view-host" onclick="switchView('host')" class="px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all duration-200 bg-purple-600 text-white shadow-md">
+        <i data-lucide="sliders" class="w-4 h-4"></i>
+        <span>Host Controls</span>
+      </button>
+    </div>
+
+    <!-- Quick Audio Mute Toggle & Room Info -->
+    <div class="flex items-center gap-3">
+      <button id="btn-toggle-sound" onclick="toggleMute()" class="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition" title="Toggle Audio Effects">
+        <i data-lucide="volume-2" id="icon-sound" class="w-5 h-5"></i>
+      </button>
+      <div class="hidden sm:flex flex-col items-end">
+        <span class="text-xs text-slate-400">Sync ID</span>
+        <span class="text-xs font-mono bg-slate-800 px-2 py-0.5 rounded text-purple-300" id="room-id-display">...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col">
+
+    <!-- ======================================================== -->
+    <!-- VIEW 1: HOST CONTROLLER VIEW                             -->
+    <!-- ======================================================== -->
+    <section id="view-host" class="space-y-6">
+
+      <!-- Host Controls Header & Round Selector -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Round / Game State Control -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between">
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wider text-purple-400 block mb-1">Current Round / Phase</label>
+            <div class="flex gap-2">
+              <input type="text" id="input-round-name" placeholder="e.g. Round 1: Trivia, Final Showdown"
+                     class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+              <button onclick="updateRoundName()" class="bg-purple-600 hover:bg-purple-500 px-3 py-2 rounded-xl text-sm font-semibold transition">Save</button>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+            <span>Quick Presets:</span>
+            <div class="flex gap-1">
+              <button onclick="setRoundPreset('Round 1')" class="hover:text-white bg-slate-800 px-2 py-1 rounded">R1</button>
+              <button onclick="setRoundPreset('Round 2')" class="hover:text-white bg-slate-800 px-2 py-1 rounded">R2</button>
+              <button onclick="setRoundPreset('Final Round 💥')" class="hover:text-white bg-slate-800 px-2 py-1 rounded">Final</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add New Team Form -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <label class="text-xs font-bold uppercase tracking-wider text-pink-400 block mb-1">Add New Team</label>
+          <form onsubmit="handleAddTeam(event)" class="flex gap-2">
+            <input type="text" id="input-team-name" placeholder="Team Name..." required
+                   class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-pink-500">
+            <input type="color" id="input-team-color" value="#ec4899" class="w-10 h-10 p-1 bg-slate-950 border border-slate-700 rounded-xl cursor-pointer">
+            <button type="submit" class="bg-pink-600 hover:bg-pink-500 px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-1">
+              <i data-lucide="plus" class="w-4 h-4"></i> Add
+            </button>
+          </form>
+        </div>
+
+        <!-- Sound Board / FX Triggering for Host -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <label class="text-xs font-bold uppercase tracking-wider text-amber-400 block mb-1">Live Sound Board (Triggers TV Sound)</label>
+          <div class="grid grid-cols-4 gap-2">
+            <button onclick="triggerSound('cheer')" class="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1 text-slate-200">
+              <i data-lucide="party-popper" class="w-4 h-4 text-amber-400"></i> Cheer
+            </button>
+            <button onclick="triggerSound('buzzer')" class="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1 text-slate-200">
+              <i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i> Buzzer
+            </button>
+            <button onclick="triggerSound('correct')" class="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1 text-slate-200">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i> Ding!
+            </button>
+            <button onclick="triggerSound('fanfare')" class="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1 text-slate-200">
+              <i data-lucide="sparkles" class="w-4 h-4 text-purple-400"></i> Winner
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Teams Management Grid -->
+      <div id="host-teams-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Rendered Dynamically via JS -->
+      </div>
+
+      <!-- Global Actions (Reset Scores / Clear Teams) -->
+      <div class="border-t border-slate-800 pt-6 flex flex-wrap justify-between items-center gap-4 text-slate-400">
+        <div class="text-sm">
+          Tip: Open this page on a smart TV browser in <strong class="text-purple-300">TV Display Mode</strong> while controlling scores from your mobile phone.
+        </div>
+        <div class="flex gap-2">
+          <button onclick="resetAllScores()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition flex items-center gap-1.5">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset All Scores to 0
+          </button>
+          <button onclick="confirmClearAllTeams()" class="px-4 py-2 bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-800/50 rounded-xl text-xs font-semibold transition flex items-center gap-1.5">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear All Teams
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 2: TV DISPLAY VIEW (Big Screen Mode)                -->
+    <!-- ======================================================== -->
+    <section id="view-tv" class="hidden flex-1 flex flex-col justify-between space-y-8 py-4">
+
+      <!-- Active Round Banner on TV -->
+      <div class="text-center space-y-2">
+        <div class="inline-flex items-center gap-2 bg-purple-950/80 border border-purple-500/30 px-6 py-2 rounded-full text-purple-300 font-bold uppercase tracking-widest text-sm shadow-lg shadow-purple-950/50 animate-pulse-subtle">
+          <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
+          <span id="tv-round-display">Round 1: Game On!</span>
+        </div>
+        <h2 class="font-display text-3xl md:text-5xl font-extrabold text-slate-200 tracking-tight">
+          CURRENT LEADERBOARD
+        </h2>
+      </div>
+
+      <!-- Main TV Scoreboard Grid -->
+      <div id="tv-teams-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 my-auto">
+        <!-- Rendered Dynamically via JS with Large Displays -->
+      </div>
+
+      <!-- TV Leaderboard Podium Preview / Footer Summary -->
+      <div id="tv-footer-status" class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-wrap justify-around items-center gap-4 text-center">
+        <!-- Filled dynamically with leading status -->
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Confirm Modal for destructive actions -->
+  <div id="modal-confirm" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+      <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <i data-lucide="alert-triangle" class="text-amber-400"></i>
+        <span id="modal-title">Are you sure?</span>
+      </h3>
+      <p id="modal-desc" class="text-sm text-slate-300">This action cannot be undone.</p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-semibold">Cancel</button>
+        <button id="modal-confirm-btn" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-sm font-semibold">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIREBASE MODULE & APPLICATION LOGIC -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { 
+      getAuth, 
+      signInAnonymously, 
+      signInWithCustomToken, 
+      onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { 
+      getFirestore, 
+      doc, 
+      setDoc, 
+      onSnapshot 
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // -------------------------------------------------------------
+    // 1. App Configuration & Initialization
+    // -------------------------------------------------------------
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'gamenight-scoreboard';
+    
+    // Default fallback firebase config if environment variable not provided
+    const firebaseConfig = typeof __firebase_config !== 'undefined' 
+      ? JSON.parse(__firebase_config) 
+      : {
+          apiKey: "demo-api-key",
+          authDomain: "demo-app.firebaseapp.com",
+          projectId: "demo-app",
+          storageBucket: "demo-app.appspot.com",
+          messagingSenderId: "123456789",
+          appId: "1:123456789:web:abcdef"
+        };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // Global State
+    window.state = {
+      roundName: "Round 1: Let's Play!",
+      teams: [
+        { id: 't1', name: 'Thunder Cats', score: 10, color: '#ec4899' },
+        { id: 't2', name: 'Quiz Wizards', score: 15, color: '#a855f7' },
+        { id: 't3', name: 'Brainiacs', score: 5, color: '#3b82f6' }
+      ],
+      lastAudioTrigger: null,
+      muted: false,
+      currentView: 'host'
+    };
+
+    let isRemoteUpdate = false;
+    let localUserId = null;
+    let docRef = null;
+
+    // Web Audio Synthesizer for Zero-Dependency Sound Effects
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+      }
+      init() {
+        if (!this.ctx) {
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+      }
+      play(type) {
+        if (window.state.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        
+        if (type === 'correct') {
+          // Double ding (High pitch)
+          const osc1 = this.ctx.createOscillator();
+          const gain1 = this.ctx.createGain();
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(523.25, now); // C5
+          osc1.frequency.setValueAtTime(659.25, now + 0.1); // E5
+          gain1.gain.setValueAtTime(0.3, now);
+          gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+          osc1.connect(gain1);
+          gain1.connect(this.ctx.destination);
+          osc1.start(now);
+          osc1.stop(now + 0.4);
+        } else if (type === 'buzzer') {
+          // Low saw error sound
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(150, now);
+          osc.frequency.linearRampToValueAtTime(110, now + 0.3);
+          gain.gain.setValueAtTime(0.4, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        } else if (type === 'cheer') {
+          // Synthesized applause / noise burst + ascending chord
+          const notes = [261.63, 329.63, 392.00, 523.25];
+          notes.forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + (idx * 0.05));
+            gain.gain.setValueAtTime(0.2, now + (idx * 0.05));
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + (idx * 0.05));
+            osc.stop(now + 0.6);
+          });
+        } else if (type === 'fanfare') {
+          // Victory fanfare
+          const sequence = [
+            { f: 392.00, t: 0 },   // G4
+            { f: 523.25, t: 0.15 }, // C5
+            { f: 659.25, t: 0.3 },  // E5
+            { f: 783.99, t: 0.45 }  // G5
+          ];
+          sequence.forEach(item => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(item.f, now + item.t);
+            gain.gain.setValueAtTime(0.3, now + item.t);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + item.t + 0.3);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + item.t);
+            osc.stop(now + item.t + 0.3);
+          });
+          // Launch confetti celebration
+          if (typeof confetti === 'function') {
+            confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+          }
+        }
+      }
+    }
+
+    const soundFx = new SoundEngine();
+
+    // -------------------------------------------------------------
+    // 2. Authentication & Realtime Firestore Setup
+    // -------------------------------------------------------------
+    async function initAuthAndSync() {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.warn("Auth fallback activated:", err);
+      }
+
+      onAuthStateChanged(auth, (user) => {
+        if (!user) return;
+        localUserId = user.uid;
+
+        // Display Room/User ID
+        const roomDisplay = document.getElementById('room-id-display');
+        if (roomDisplay) roomDisplay.innerText = appId.substring(0, 10);
+
+        // Strict Path: /artifacts/{appId}/public/data/scoreboard
+        docRef = doc(db, 'artifacts', appId, 'public', 'data', 'scoreboard_state', 'main');
+
+        // Real-time listener
+        onSnapshot(docRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const remoteData = docSnap.data();
+
+            // Check sound trigger
+            if (remoteData.lastAudioTrigger && remoteData.lastAudioTrigger.timestamp !== window.state.lastAudioTrigger?.timestamp) {
+              soundFx.play(remoteData.lastAudioTrigger.type);
+            }
+
+            window.state.roundName = remoteData.roundName || "Round 1";
+            window.state.teams = remoteData.teams || [];
+            window.state.lastAudioTrigger = remoteData.lastAudioTrigger || null;
+
+            updateSyncStatus(true);
+            renderUI();
+          } else {
+            // First time initialization in DB
+            saveStateToFirestore();
+          }
+        }, (error) => {
+          console.error("Firestore sync error:", error);
+          updateSyncStatus(false);
+        });
+      });
+    }
+
+    function updateSyncStatus(isLive) {
+      const el = document.getElementById('sync-status');
+      if (!el) return;
+      if (isLive) {
+        el.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span class="text-emerald-400 font-medium">Live Synced</span>`;
+      } else {
+        el.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span><span class="text-amber-400">Offline / Standalone</span>`;
+      }
+    }
+
+    async function saveStateToFirestore() {
+      if (!docRef) return;
+      try {
+        await setDoc(docRef, {
+          roundName: window.state.roundName,
+          teams: window.state.teams,
+          lastAudioTrigger: window.state.lastAudioTrigger,
+          updatedAt: Date.now()
+        });
+      } catch (e) {
+        console.error("Error saving state:", e);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 3. UI Rendering & Interactions
+    // -------------------------------------------------------------
+    function renderUI() {
+      // Refresh icon elements
+      if (window.lucide) lucide.createIcons();
+
+      // Sync Round Name Inputs
+      const roundInput = document.getElementById('input-round-name');
+      if (roundInput && document.activeElement !== roundInput) {
+        roundInput.value = window.state.roundName;
+      }
+
+      const tvRoundDisplay = document.getElementById('tv-round-display');
+      if (tvRoundDisplay) {
+        tvRoundDisplay.innerText = window.state.roundName;
+      }
+
+      if (window.state.currentView === 'host') {
+        renderHostView();
+      } else {
+        renderTVView();
+      }
+    }
+
+    function renderHostView() {
+      const container = document.getElementById('host-teams-container');
+      if (!container) return;
+
+      if (window.state.teams.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full text-center py-12 bg-slate-900/50 rounded-2xl border border-dashed border-slate-800">
+            <i data-lucide="users" class="w-12 h-12 text-slate-600 mx-auto mb-3"></i>
+            <p class="text-slate-400 font-medium">No teams added yet!</p>
+            <p class="text-xs text-slate-500 mt-1">Use the form above to create your game night teams.</p>
+          </div>
+        `;
+        if (window.lucide) lucide.createIcons();
+        return;
+      }
+
+      // Sort teams by score descending for orderly display
+      const sortedTeams = [...window.state.teams].sort((a, b) => b.score - a.score);
+
+      container.innerHTML = sortedTeams.map((team, rank) => {
+        return `
+          <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 shadow-lg space-y-4 relative overflow-hidden transition-all">
+            <!-- Team Header & Color Accent -->
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <span class="w-4 h-8 rounded-full" style="background-color: ${team.color}"></span>
+                <div>
+                  <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                    ${escapeHtml(team.name)}
+                    ${rank === 0 ? '<span class="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">#1</span>' : ''}
+                  </h3>
+                  <span class="text-xs text-slate-400">Rank #${rank + 1}</span>
+                </div>
+              </div>
+              <button onclick="confirmDeleteTeam('${team.id}')" class="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-800 transition">
+                <i data-lucide="trash" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <!-- Score Display -->
+            <div class="bg-slate-950 rounded-xl p-4 text-center border border-slate-800/80">
+              <span class="text-4xl font-display font-black text-white tracking-tight">${team.score}</span>
+              <span class="text-xs text-slate-500 block uppercase font-semibold tracking-wider mt-0.5">Points</span>
+            </div>
+
+            <!-- Quick Adjust Buttons -->
+            <div class="grid grid-cols-4 gap-1.5">
+              <button onclick="adjustScore('${team.id}', -1)" class="bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded-xl font-bold text-sm transition active:scale-95">-1</button>
+              <button onclick="adjustScore('${team.id}', 1)" class="bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/50 py-2 rounded-xl font-bold text-sm transition active:scale-95">+1</button>
+              <button onclick="adjustScore('${team.id}', 5)" class="bg-purple-950 hover:bg-purple-900 text-purple-300 border border-purple-800/50 py-2 rounded-xl font-bold text-sm transition active:scale-95">+5</button>
+              <button onclick="adjustScore('${team.id}', 10)" class="bg-pink-950 hover:bg-pink-900 text-pink-300 border border-pink-800/50 py-2 rounded-xl font-bold text-sm transition active:scale-95">+10</button>
+            </div>
+
+            <!-- Custom Score Entry -->
+            <div class="flex gap-2 pt-1">
+              <input type="number" id="custom-score-${team.id}" placeholder="Custom value" 
+                     class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500">
+              <button onclick="applyCustomScore('${team.id}')" class="bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-200 transition whitespace-nowrap">
+                Set
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function renderTVView() {
+      const container = document.getElementById('tv-teams-container');
+      const footer = document.getElementById('tv-footer-status');
+      if (!container) return;
+
+      if (window.state.teams.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full text-center py-20 bg-slate-900/40 rounded-3xl border border-slate-800">
+            <h3 class="text-2xl font-bold text-slate-400">Waiting for teams to join...</h3>
+            <p class="text-sm text-slate-500 mt-2">Add teams from the Host Controls panel.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Ranked Teams
+      const sorted = [...window.state.teams].sort((a, b) => b.score - a.score);
+
+      container.innerHTML = sorted.map((team, idx) => {
+        const isLeader = idx === 0 && team.score > 0;
+        const rankBadgeClass = idx === 0 ? 'bg-amber-400 text-slate-950' : idx === 1 ? 'bg-slate-300 text-slate-950' : idx === 2 ? 'bg-amber-700 text-white' : 'bg-slate-800 text-slate-400';
+
+        return `
+          <div class="score-card-transition bg-slate-900/90 border ${isLeader ? 'border-amber-500/50 shadow-2xl shadow-amber-500/10' : 'border-slate-800'} rounded-3xl p-6 relative flex flex-col justify-between space-y-6">
+            
+            <!-- Rank & Team Banner -->
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3.5">
+                <span class="w-10 h-10 rounded-2xl flex items-center justify-center font-display font-black text-lg ${rankBadgeClass} shadow-md">
+                  ${idx + 1}
+                </span>
+                <div>
+                  <h3 class="font-display font-extrabold text-2xl md:text-3xl text-white tracking-wide truncate max-w-[180px]">
+                    ${escapeHtml(team.name)}
+                  </h3>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span class="w-3 h-3 rounded-full" style="background-color: ${team.color}"></span>
+                    <span class="text-xs text-slate-400 font-medium uppercase tracking-wider">Team Color</span>
+                  </div>
+                </div>
+              </div>
+
+              ${isLeader ? `
+                <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl animate-bounce-short">
+                  <i data-lucide="crown" class="w-8 h-8 text-amber-400"></i>
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Big Score Counter -->
+            <div class="bg-slate-950/80 rounded-2xl p-6 text-center border border-slate-800 shadow-inner">
+              <div class="font-display font-black text-6xl md:text-7xl text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-300 tracking-tight text-glow">
+                ${team.score}
+              </div>
+              <div class="text-xs uppercase font-bold tracking-widest text-slate-400 mt-2">TOTAL POINTS</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Footer Summary
+      if (footer) {
+        const topTeam = sorted[0];
+        footer.innerHTML = `
+          <div class="flex items-center gap-2 text-slate-300">
+            <i data-lucide="trophy" class="w-5 h-5 text-amber-400"></i>
+            <span>Current Leader: <strong class="text-white font-bold">${topTeam ? escapeHtml(topTeam.name) : 'None'}</strong> (${topTeam ? topTeam.score : 0} pts)</span>
+          </div>
+          <div class="text-slate-400 text-xs">
+            Total Active Teams: <strong class="text-slate-200">${sorted.length}</strong>
+          </div>
+        `;
+      }
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    // Helper functions
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, (m) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+      })[m]);
+    }
+
+    // -------------------------------------------------------------
+    // 4. Exposed Functions for Controls (Attached to Window)
+    // -------------------------------------------------------------
+    window.switchView = function(view) {
+      window.state.currentView = view;
+      const hostSec = document.getElementById('view-host');
+      const tvSec = document.getElementById('view-tv');
+      const btnHost = document.getElementById('btn-view-host');
+      const btnTv = document.getElementById('btn-view-tv');
+
+      if (view === 'host') {
+        hostSec.classList.remove('hidden');
+        tvSec.classList.add('hidden');
+        btnHost.className = "px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all duration-200 bg-purple-600 text-white shadow-md";
+        btnTv.className = "px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all duration-200 text-slate-400 hover:text-white";
+      } else {
+        hostSec.classList.add('hidden');
+        tvSec.classList.remove('hidden');
+        btnTv.className = "px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all duration-200 bg-purple-600 text-white shadow-md";
+        btnHost.className = "px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all duration-200 text-slate-400 hover:text-white";
+      }
+      renderUI();
+    };
+
+    window.toggleMute = function() {
+      window.state.muted = !window.state.muted;
+      const icon = document.getElementById('icon-sound');
+      if (icon) {
+        icon.setAttribute('data-lucide', window.state.muted ? 'volume-x' : 'volume-2');
+        if (window.lucide) lucide.createIcons();
+      }
+    };
+
+    window.handleAddTeam = function(e) {
+      e.preventDefault();
+      const nameInput = document.getElementById('input-team-name');
+      const colorInput = document.getElementById('input-team-color');
+
+      if (!nameInput.value.trim()) return;
+
+      const newTeam = {
+        id: 'team_' + Date.now(),
+        name: nameInput.value.trim(),
+        color: colorInput.value || '#ec4899',
+        score: 0
+      };
+
+      window.state.teams.push(newTeam);
+      nameInput.value = '';
+      
+      soundFx.play('correct');
+      saveStateToFirestore();
+      renderUI();
+    };
+
+    window.adjustScore = function(teamId, delta) {
+      const team = window.state.teams.find(t => t.id === teamId);
+      if (team) {
+        team.score += delta;
+        if (delta > 0) soundFx.play('correct');
+        else soundFx.play('buzzer');
+        saveStateToFirestore();
+        renderUI();
+      }
+    };
+
+    window.applyCustomScore = function(teamId) {
+      const input = document.getElementById(`custom-score-${teamId}`);
+      if (!input || input.value === '') return;
+      const val = parseInt(input.value, 10);
+      if (isNaN(val)) return;
+
+      const team = window.state.teams.find(t => t.id === teamId);
+      if (team) {
+        team.score = val;
+        input.value = '';
+        soundFx.play('correct');
+        saveStateToFirestore();
+        renderUI();
+      }
+    };
+
+    window.updateRoundName = function() {
+      const input = document.getElementById('input-round-name');
+      if (input) {
+        window.state.roundName = input.value.trim() || 'Round 1';
+        saveStateToFirestore();
+        renderUI();
+      }
+    };
+
+    window.setRoundPreset = function(presetName) {
+      window.state.roundName = presetName;
+      saveStateToFirestore();
+      renderUI();
+    };
+
+    window.triggerSound = function(soundType) {
+      soundFx.play(soundType);
+      window.state.lastAudioTrigger = {
+        type: soundType,
+        timestamp: Date.now()
+      };
+      saveStateToFirestore();
+    };
+
+    window.resetAllScores = function() {
+      showModal(
+        "Reset All Scores?",
+        "This will set every team's points back to zero.",
+        () => {
+          window.state.teams.forEach(t => t.score = 0);
+          saveStateToFirestore();
+          renderUI();
+        }
+      );
+    };
+
+    window.confirmClearAllTeams = function() {
+      showModal(
+        "Clear All Teams?",
+        "Are you sure you want to delete all teams from the scoreboard?",
+        () => {
+          window.state.teams = [];
+          saveStateToFirestore();
+          renderUI();
+        }
+      );
+    };
+
+    window.confirmDeleteTeam = function(teamId) {
+      const team = window.state.teams.find(t => t.id === teamId);
+      showModal(
+        "Delete Team?",
+        `Remove "${team ? team.name : 'this team'}" from the game?`,
+        () => {
+          window.state.teams = window.state.teams.filter(t => t.id !== teamId);
+          saveStateToFirestore();
+          renderUI();
+        }
+      );
+    };
+
+    // Modal Helper
+    function showModal(title, desc, onConfirm) {
+      document.getElementById('modal-title').innerText = title;
+      document.getElementById('modal-desc').innerText = desc;
+      const confirmBtn = document.getElementById('modal-confirm-btn');
+      
+      confirmBtn.onclick = () => {
+        onConfirm();
+        closeModal();
+      };
+      
+      document.getElementById('modal-confirm').classList.remove('hidden');
+    }
+
+    window.closeModal = function() {
+      document.getElementById('modal-confirm').classList.add('hidden');
+    };
+
+    // Initialize on window load
+    window.addEventListener('load', () => {
+      initAuthAndSync();
+      // Check URL parameters for starting view
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('view') === 'tv') {
+        switchView('tv');
+      }
+    });
+  </script>
+</body>
+</html>
